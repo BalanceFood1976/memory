@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>카드 뒤집기 게임 - 타이머 버전</title>
+<meta name="color-scheme" content="light">
+<style>
+  :root { --tile: clamp(64px, 18vw, 92px); --gap: 10px; }
+  html, body { margin:0; padding:0; background:#ffffff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color:#0f172a; }
+  .container {
+    max-width: 520px; margin: 24px auto; padding: 0 12px;
+  }
+  .game {
+    background:#fff; border:2px solid #e5e7eb; border-radius:12px;
+    box-shadow:0 4px 12px rgba(0,0,0,.08); padding:20px; text-align:center;
+  }
+  h1 { margin:0 0 6px; font-size:22px; }
+  p.lead { margin:0 0 12px; color:#475569; }
+  .controls {
+    display:flex; justify-content:center; align-items:center; gap:8px; margin:10px 0 12px;
+  }
+  button.btn {
+    padding:10px 14px; border:none; border-radius:8px; background:#2563eb; color:#fff;
+    font-weight:700; cursor:pointer; touch-action:manipulation;
+  }
+  button.btn:active { transform: translateY(1px); }
+  #timer { font-weight:700; }
+  #board {
+    display:grid; grid-template-columns: repeat(4, var(--tile)); gap: var(--gap); justify-content:center;
+  }
+  .note { font-size:12px; color:#64748b; margin-top:8px; }
+  /* 카드는 인라인 스타일로도 지정하지만, 기본값을 클래스에도 둠 */
+  .card {
+    width:var(--tile); height:var(--tile); border-radius:10px; user-select:none;
+    display:flex; align-items:center; justify-content:center; font-size:28px; cursor:pointer;
+    background:#2563eb; color:#fff; transition:background .15s ease;
+    touch-action: manipulation;
+  }
+  .card.flipped { background:#f1f5f9; color:#0f172a; }
+  .card.matched { background:#22c55e; color:#fff; cursor:default; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="game" role="group" aria-label="카드 뒤집기 게임">
+      <h1>카드 뒤집기 게임</h1>
+      <p class="lead">같은 그림을 모두 맞추면 타이머가 멈춥니다.</p>
+
+      <div class="controls">
+        <button id="start" class="btn" type="button" aria-label="게임 시작">시작</button>
+        <button id="reset" class="btn" type="button" aria-label="다시 시작">다시 시작</button>
+        <span id="timer" aria-live="polite">⏱ 0.0초</span>
+      </div>
+
+      <div id="board" aria-live="polite" aria-label="카드 보드"></div>
+      <div class="note">팁: 시작을 누르면 카드가 섞이고 시간이 흐릅니다.</div>
+    </div>
+  </div>
+
+<script>
+(()=> {
+  const EMOJIS = ["🍎","🍌","🍇","🍒","🥝","🍍","🍉","🍑"]; // 4x4 (8쌍)
+  const boardEl = document.getElementById('board');
+  const startBtn = document.getElementById('start');
+  const resetBtn = document.getElementById('reset');
+  const timerEl = document.getElementById('timer');
+
+  let first = null, lock = false, matches = 0;
+  let running = false, startAt = 0, rafId = 0;
+
+  function shuffle(a){
+    for(let i=a.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function buildBoard(){
+    boardEl.innerHTML = '';
+    const cards = shuffle([...EMOJIS, ...EMOJIS]);
+    for(const sym of cards){
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'card';
+      card.dataset.symbol = sym;
+      card.setAttribute('aria-label', '카드 뒤집기');
+      card.addEventListener('click', onFlip, {passive:true});
+      boardEl.appendChild(card);
+    }
+  }
+
+  function onFlip(e){
+    if(!running) return;
+    const el = e.currentTarget;
+    if(lock || el.classList.contains('flipped') || el.classList.contains('matched')) return;
+
+    flipOpen(el);
+
+    if(!first){ first = el; return; }
+
+    lock = true;
+    if(first.dataset.symbol === el.dataset.symbol){
+      setMatched(first);
+      setMatched(el);
+      matches++;
+      resetPick();
+
+      if(matches === EMOJIS.length){
+        running = false;
+        cancelAnimationFrame(rafId);
+        setTimeout(()=> {
+          alert('클리어! 기록: ' + timerEl.textContent);
+        }, 150);
+      }
+    }else{
+      setTimeout(()=> {
+        flipClose(first);
+        flipClose(el);
+        resetPick();
+      }, 650);
+    }
+  }
+
+  function flipOpen(el){
+    el.classList.add('flipped');
+    el.textContent = el.dataset.symbol;
+  }
+  function flipClose(el){
+    el.classList.remove('flipped');
+    el.textContent = '';
+  }
+  function setMatched(el){
+    el.classList.add('matched');
+    el.textContent = el.dataset.symbol;
+  }
+  function resetPick(){ first = null; lock = false; }
+
+  function startTimer(){
+    startAt = performance.now();
+    cancelAnimationFrame(rafId);
+    const tick = (t)=>{
+      if(!running) return;
+      const sec = ((t - startAt) / 1000).toFixed(1);
+      timerEl.textContent = `⏱ ${sec}초`;
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // 버튼들
+  startBtn.addEventListener('click', () => {
+    matches = 0;
+    running = true;
+    timerEl.textContent = '⏱ 0.0초';
+    buildBoard();
+    startTimer();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    matches = 0;
+    running = false;
+    cancelAnimationFrame(rafId);
+    timerEl.textContent = '⏱ 0.0초';
+    buildBoard();
+  });
+
+  // 첫 로드: 보드만 표시(시작 전이라 뒤집기 동작 안 함)
+  buildBoard();
+})();
+</script>
+</body>
+</html>
